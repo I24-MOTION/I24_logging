@@ -8,11 +8,11 @@ import random
 
 
 def test_worker(name):
-    worker_logger = I24Logger(server_id='test_server', environment='test-log',
-                              owner_process_name=name, owner_process_id=os.getpid(),
-                              owner_parent_name='test_main', connect_logstash=False, connect_file=True,
-                              connect_syslog=False, connect_console=True, file_path='{}.log'.format(os.getpid()),
-                              file_log_level='DEBUG', console_log_level='INFO')
+    
+    # minimalist logger creation; default names / IDs are provided by the logger
+    # eventually all logger parameters can be omitted in later versions
+    worker_logger = I24Logger(connect_file=True, file_log_level='DEBUG', 
+                              connect_console=True, console_log_level='INFO')
     while True:
         try:
             wait_time = random.randint(0, 500) / 100
@@ -27,6 +27,8 @@ def test_worker(name):
 
 
 def test_main():
+    
+    # extended logger creation; names / IDs are provided by the caller
     parent_logger = I24Logger(server_id='test_server', environment='log-test',
                               owner_process_name='test_main', owner_process_id=os.getpid(),
                               connect_logstash=False, connect_file=True, connect_syslog=False, connect_console=True,

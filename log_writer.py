@@ -5,6 +5,7 @@ from logstash_async.handler import AsynchronousLogstashHandler
 from logstash_async.formatter import LogstashFormatter
 import ecs_logging
 import sys
+import os
 
 from typing import Union, Mapping
 
@@ -76,14 +77,26 @@ class I24Logger:
         which we want to have consistent behavior.
     """
 
-    def __init__(self, server_id: Union[str, int], environment: str, owner_process_name: str,
-                 owner_process_id: int, owner_parent_name: str = None,
+    #def __init__(self, server_id: Union[str, int], environment: str, owner_process_name: str,
+    #             owner_process_id: int, owner_parent_name: str = None,
+    #             connect_logstash: bool = False, connect_file: bool = False,
+    #             connect_syslog: bool = False, connect_console: bool = False,
+    #             logstash_host: str = None, logstash_port: int = None, file_path: str = None,
+    #             syslog_location: Union[tuple[str, int], str] = None, all_log_level: str = 'DEBUG',
+    #             logstash_log_level: Union[str, None] = None, file_log_level: Union[str, None] = None,
+    #             syslog_log_level: Union[str, None] = None, console_log_level: Union[str, None] = None):
+
+    # Python 3.8.10 compatibility mode
+    def __init__(self, server_id: str = None, environment: str = None, owner_process_name: str = None,
+                 owner_process_id: int = -1, owner_parent_name: str = None,
                  connect_logstash: bool = False, connect_file: bool = False,
                  connect_syslog: bool = False, connect_console: bool = False,
                  logstash_host: str = None, logstash_port: int = None, file_path: str = None,
-                 syslog_location: Union[tuple[str, int], str] = None, all_log_level: str = 'DEBUG',
-                 logstash_log_level: Union[str, None] = None, file_log_level: Union[str, None] = None,
-                 syslog_log_level: Union[str, None] = None, console_log_level: Union[str, None] = None):
+                 syslog_location = None, all_log_level: str = 'DEBUG',
+                 logstash_log_level = None, file_log_level = None,
+                 syslog_log_level = None, console_log_level = None):
+
+
         """
         Constructor of the persistent logging interface. It establishes a custom multi-destination logger with the
             option to log different levels to different destinations.
@@ -107,14 +120,23 @@ class I24Logger:
         :param syslog_log_level: Syslog log level; overrides `all_log_level`.
         :param console_log_level: Console log level; overrides `all_log_level`.
         """
-        # The name of the logger we create with this class will have this name, possibly with parent.child syntax.
-        self._name = (owner_parent_name + '.' if owner_parent_name is not None else '') + owner_process_name
-        # These are custom fields that we have decided all of our loggers are going to be instantiated with.
-        self._server_id = server_id
-        self._environment = environment
-        self._owner_name = owner_process_name
-        self._owner_pid = owner_process_id
+                
+        self._owner_pid = owner_process_id if owner_process_id >= 0 else os.getpid()
+        
+        self._owner_name = owner_process_name if owner_process_name is not None else 'PID-{}'.format(self._owner_pid)
+
+        self._server_id = server_id if server_id is not None else socket.gethostname()
+        
+        self._environment = environment if environment is not None else 'DEF_ENV'                    
+
         self._owner_parent_name = owner_parent_name
+        
+        # The name of the logger we create with this class will have this name, possibly with parent.child syntax.
+        self._name = (owner_parent_name + '.' if owner_parent_name is not None else '') + self._owner_name
+        
+        self._logfile_path = file_path if file_path is not None else '{}_{}.log'.format(self._owner_name, self._owner_pid)
+                
+        
         self._default_logger_extra = {'serverid': self._server_id, 'environment': self._environment,
                                       'ownername': self._owner_name, 'ownerpid': self._owner_pid,
                                       'parentname': self._owner_parent_name}
@@ -142,13 +164,12 @@ class I24Logger:
 
         if connect_logstash is True and (logstash_host is None or logstash_port is None):
             raise ValueError("Logstash logging activated, but no connection information given (host and port).")
-        if connect_file is True and (file_path is None or file_path == ''):
+        if connect_file is True and (self._logfile_path is None or self._logfile_path == ''):
             raise ValueError("File logging activated, but no file path given.")
         if connect_syslog is True and syslog_location is None:
             raise ValueError("Syslog logging activated, but no location (path or host/port tuple) given.")
 
-        self._logstash_host, self._logstash_port = logstash_host, logstash_port
-        self._logfile_path = file_path
+        self._logstash_host, self._logstash_port = logstash_host, logstash_port        
         self._syslog_location = syslog_location
 
         logging.setLoggerClass(ExtraLogger)
