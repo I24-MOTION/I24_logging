@@ -36,7 +36,7 @@ def test_main():
     parent_logger.info("Main process logger connected.", extra={'myfield': 'EXTRA WORKS!'})
     num_workers = 4
     worker_processes = []
-    parent_logger.info("Starting worker processes.", extra={'n': 10})
+    parent_logger.info("Starting worker processes.", extra={'n': num_workers})
     for i in range(num_workers):
         worker_name = 'worker-{}'.format(i)
         parent_logger.debug("Starting process for '{}'.".format(worker_name), extra={})
