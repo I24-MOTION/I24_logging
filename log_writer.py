@@ -12,6 +12,8 @@ from typing import Union, Mapping
 levels = {'CRITICAL': logging.CRITICAL, 'ERROR': logging.ERROR, 'WARNING': logging.WARNING,
           'INFO': logging.INFO, 'DEBUG': logging.DEBUG, None: None}
 
+global logger
+
 
 class MaxLevelFilter(object):
     """
@@ -77,69 +79,53 @@ class I24Logger:
         which we want to have consistent behavior.
     """
 
-    #def __init__(self, server_id: Union[str, int], environment: str, owner_process_name: str,
-    #             owner_process_id: int, owner_parent_name: str = None,
-    #             connect_logstash: bool = False, connect_file: bool = False,
-    #             connect_syslog: bool = False, connect_console: bool = False,
-    #             logstash_host: str = None, logstash_port: int = None, file_path: str = None,
-    #             syslog_location: Union[tuple[str, int], str] = None, all_log_level: str = 'DEBUG',
-    #             logstash_log_level: Union[str, None] = None, file_log_level: Union[str, None] = None,
-    #             syslog_log_level: Union[str, None] = None, console_log_level: Union[str, None] = None):
-
-    # Python 3.8.10 compatibility mode
-    def __init__(self, server_id: str = None, environment: str = None, owner_process_name: str = None,
-                 owner_process_id: int = -1, owner_parent_name: str = None,
+    # Python 3.8 compatibility mode...add other typehints if minimum version changes.
+    def __init__(self, log_name: str = None, processing_environment: str = None,
                  connect_logstash: bool = False, connect_file: bool = False,
                  connect_syslog: bool = False, connect_console: bool = False,
-                 logstash_host: str = None, logstash_port: int = None, file_path: str = None,
-                 syslog_location = None, all_log_level: str = 'DEBUG',
-                 logstash_log_level = None, file_log_level = None,
-                 syslog_log_level = None, console_log_level = None):
-
-
+                 logstash_address=None, file_path: str = None, syslog_location=None,
+                 all_log_level: str = 'DEBUG', logstash_log_level=None, file_log_level=None,
+                 syslog_log_level=None, console_log_level=None):
         """
         Constructor of the persistent logging interface. It establishes a custom multi-destination logger with the
             option to log different levels to different destinations.
-        :param server_id: Identifier (string or int) of the server on which this logger is running.
-        :param environment: Software environment for this logger (e.g., production, development). Not currently used
-            to set logging handlers in this object, but the two can be controlled jointly where this logger is created.
-        :param owner_process_name: The name (official or unofficial) of the process that created/owns this logger.
-        :param owner_process_id: Process ID (PID) of the process that created/owns this logger.
-        :param owner_parent_name: Parent process of the owner of this logger; useful for tracking hierarchy in logs.
+        :param log_name:
+        :param processing_environment:
         :param connect_logstash: True/False to connect to Logstash via asynchronous handler.
         :param connect_file: True/False to connect a simple log file (non-rotating) to this logger. If multiple loggers
             are instantiated, multiple files will be produced and need to be differentiated by `file_path`.
         :param connect_syslog: True/False to connect to the host computer's syslog via TCP Socket Stream.
         :param connect_console: True/False to connect to the STDOUT and STDERR available via `sys` package.
-        :param logstash_host: Hostname of the Logstash server.
-        :param logstash_port: Port number of the Logstash server.
+        :param logstash_address: (host, port) tuple for Logstash connection.
         :param file_path: Path (absolute or relative) and file name of the log file to write; directories not created.
         :param all_log_level: Available to set a global log level across all handlers; overridden by handler-specific.
-        :param logstash_log_level: Logstash log level; overrides `all_log_level`.
-        :param file_log_level: File log level; overrides `all_log_level`.
-        :param syslog_log_level: Syslog log level; overrides `all_log_level`.
-        :param console_log_level: Console log level; overrides `all_log_level`.
+        :param logstash_log_level: Logstash log level as string; overrides `all_log_level`.
+        :param file_log_level: File log level as string; overrides `all_log_level`.
+        :param syslog_log_level: Syslog log level as string; overrides `all_log_level`.
+        :param console_log_level: Console log level as string; overrides `all_log_level`.
         """
-                
-        self._owner_pid = owner_process_id if owner_process_id >= 0 else os.getpid()
-        
-        self._owner_name = owner_process_name if owner_process_name is not None else 'PID-{}'.format(self._owner_pid)
+        # There are multiple default LogRecord attributes that are populated automatically, so we don't need to
+        #   duplicate this functionality unless it's not working for us.
+        #       - LogRecord.process: process ID (if available, acquired from `os.getpid()`)
+        #       - LogRecord.processName: process name (default='MainProcess', acquired from `mp.current_process().name`)
+        #       - LogRecord.thread: thread ID (default=None, acquired from `threading.get_ident()`)
+        #       - LogRecord.threadName: thread name (default=None, acquired from `threading.current_thread().name`)
+        #       - LogRecord.filename/pathname: file/path of source file (where this comes from is complicated)
+        #       - LogRecord.module: filename without extension
 
-        self._server_id = server_id if server_id is not None else socket.gethostname()
-        
-        self._environment = environment if environment is not None else 'DEF_ENV'                    
+        # We have to give the logger a name, but the actual process name is populated in LogRecords automatically.
+        self._name = log_name
 
-        self._owner_parent_name = owner_parent_name
+        self._hostname = socket.gethostname()
+        self._environment = processing_environment if processing_environment is not None else 'DEF_ENV'
         
-        # The name of the logger we create with this class will have this name, possibly with parent.child syntax.
-        self._name = (owner_parent_name + '.' if owner_parent_name is not None else '') + self._owner_name
-        
-        self._logfile_path = file_path if file_path is not None else '{}_{}.log'.format(self._owner_name, self._owner_pid)
-                
-        
-        self._default_logger_extra = {'serverid': self._server_id, 'environment': self._environment,
-                                      'ownername': self._owner_name, 'ownerpid': self._owner_pid,
-                                      'parentname': self._owner_parent_name}
+        self._logstash_addr = logstash_address
+        self._logfile_path = file_path if file_path is not None else '{}_{}.log'.format(self._name, os.getpid())
+        self._syslog_location = syslog_location
+
+        # No need to put in owner process name/ID or parent, since this information will be in the logger name or
+        #   the LogRecord attributes.
+        self._default_logger_extra = {'host': self._hostname, 'env': self._environment}
 
         if not all([ll in levels.keys() for ll in
                     (logstash_log_level, file_log_level, syslog_log_level, console_log_level)]):
@@ -153,38 +139,101 @@ class I24Logger:
                             'console': (levels[console_log_level] if console_log_level is not None
                                         else levels[all_log_level]),
                             }
-        if connect_logstash is True and self._log_levels['logstash'] is None:
+        self._connect = {'logstash': connect_logstash, 'file': connect_file,
+                         'syslog': connect_syslog, 'console': connect_console}
+
+        if self._connect['logstash'] is True and self._log_levels['logstash'] is None:
             raise ValueError("Logstash logging activated, but no log level specified during construction.")
-        if connect_file is True and self._log_levels['file'] is None:
+        if self._connect['file'] is True and self._log_levels['file'] is None:
             raise ValueError("File logging activated, but no log level specified during construction.")
-        if connect_syslog is True and self._log_levels['syslog'] is None:
+        if self._connect['syslog'] is True and self._log_levels['syslog'] is None:
             raise ValueError("Syslog logging activated, but no log level specified during construction.")
-        if connect_console is True and self._log_levels['console'] is None:
+        if self._connect['console'] is True and self._log_levels['console'] is None:
             raise ValueError("Console logging activated, but no log level specified during construction.")
 
-        if connect_logstash is True and (logstash_host is None or logstash_port is None):
+        if self._connect['logstash'] is True and self._logstash_addr is None:
             raise ValueError("Logstash logging activated, but no connection information given (host and port).")
-        if connect_file is True and (self._logfile_path is None or self._logfile_path == ''):
+        if self._connect['file'] is True and (self._logfile_path is None or self._logfile_path == ''):
             raise ValueError("File logging activated, but no file path given.")
-        if connect_syslog is True and syslog_location is None:
+        if self._connect['syslog'] is True and syslog_location is None:
             raise ValueError("Syslog logging activated, but no location (path or host/port tuple) given.")
-
-        self._logstash_host, self._logstash_port = logstash_host, logstash_port        
-        self._syslog_location = syslog_location
 
         logging.setLoggerClass(ExtraLogger)
         self._logger = logging.getLogger(self._name)
         self._logger.propagate = False
-        self._logger.setLevel(logging.DEBUG)
+        # Set overall logger level at the minimum of the specified levels (no need to set it any lower).
+        self._logger.setLevel(min(self._log_levels.values()))
 
-        if connect_logstash is True:
+        if self._connect['logstash'] is True:
             self._setup_logstash()
-        if connect_file is True:
+        if self._connect['file'] is True:
             self._setup_file()
-        if connect_syslog is True:
+        if self._connect['syslog'] is True:
             self._setup_syslog()
-        if connect_console is True:
-            self._setup_stdout()
+        if self._connect['console'] is True:
+            self._setup_console()
+
+    def connect_logstash(self, logstash_address, logstash_log_level=None):
+        """
+        External-access function for setting up Logstash AFTER construction of I24Logger.
+        :param logstash_address: Since Logstash was not set up at construction, need to pass in (host, port).
+        :param logstash_log_level: Logstash log level as string; overrides any level specified in constructor for LS.
+        :return: None
+        """
+        if self._connect['logstash'] is True:
+            self.warning("Logstash logging is already connected!")
+            return
+        self._connect['logstash'] = True
+        self._logstash_addr = logstash_address
+        if logstash_log_level is not None:
+            self._log_levels['logstash'] = levels[logstash_log_level]
+        self._setup_logstash()
+
+    def connect_syslog(self, syslog_location, syslog_log_level=None):
+        """
+        External-access function for setting up syslog AFTER construction of I24Logger.
+        :param syslog_location: Since syslog was not set up at construction, need to pass in its location.
+        :param syslog_log_level: Syslog log level as string; overrides any level specified in constructor for syslog.
+        :return: None
+        """
+        if self._connect['syslog'] is True:
+            self.warning("Syslog logging is already connected!")
+            return
+        self._connect['syslog'] = True
+        self._syslog_location = syslog_location
+        if syslog_log_level is not None:
+            self._log_levels['syslog'] = levels[syslog_log_level]
+        self._setup_syslog()
+
+    def connect_file(self, file_path, file_log_level=None):
+        """
+        External-access function for setting up Logstash AFTER construction of I24Logger.
+        :param file_path: Since file log was not set up at construction, need to pass in a path for it.
+        :param file_log_level: File log level as string; overrides any level specified in constructor for file.
+        :return: None
+        """
+        if self._connect['file'] is True:
+            self.warning("File logging is already connected!")
+            return
+        self._connect['file'] = True
+        self._logfile_path = file_path
+        if file_log_level is not None:
+            self._log_levels['file'] = levels[file_log_level]
+        self._setup_file()
+
+    def connect_console(self, console_log_level=None):
+        """
+        External-access function for setting up console AFTER construction of I24Logger.
+        :param console_log_level: Console log level as string; overrides any level specified in constructor for console.
+        :return: None
+        """
+        if self._connect['console'] is True:
+            self.warning("Console logging is already connected!")
+            return
+        self._connect['console'] = True
+        if console_log_level is not None:
+            self._log_levels['console'] = levels[console_log_level]
+        self._setup_console()
 
     def _setup_logstash(self):
         """
@@ -195,7 +244,8 @@ class I24Logger:
         :return: None
         """
         # Set database_path to None to use in-memory caching.
-        lsth = AsynchronousLogstashHandler(self._logstash_host, self._logstash_port, database_path=None)
+        logstash_host, logstash_port = self._logstash_addr
+        lsth = AsynchronousLogstashHandler(logstash_host, logstash_port, database_path=None)
         lsth.setLevel(self._log_levels['logstash'])
         # Not using the "extra" feature of the LogstashFormatter, since we already have the desired merge behavior
         #   in our own logger object.
@@ -218,7 +268,9 @@ class I24Logger:
             ecsfmt = ecs_logging.StdlibFormatter()
             sysh.setFormatter(ecsfmt)
         else:
-            exfmt = logging.Formatter('%(asctime)s | %(levelname)s | %(name)s | %(message)s | %(extra)s')
+            # Other fields may include: %(module)s, %(processName)s, %(thread)d, %(threadName)s
+            fmtstr = '%(asctime)s | %(levelname)s | %(name)s | %(process)d | %(message)s | %(extra)s'
+            exfmt = logging.Formatter(fmtstr)
             sysh.setFormatter(exfmt)
         self._logger.addHandler(sysh)
 
@@ -235,11 +287,14 @@ class I24Logger:
             ecsfmt = ecs_logging.StdlibFormatter()
             flh.setFormatter(ecsfmt)
         else:
-            exfmt = logging.Formatter('%(asctime)s | %(levelname)s | %(name)s | %(message)s | %(extra)s')
+            # Other fields may include: %(module)s, %(processName)s, %(thread)d, %(threadName)s
+            # Process ID (%(process)d) was not included, since the files are separated already by process.
+            fmtstr = '%(asctime)s | %(levelname)s | %(name)s | %(message)s | %(extra)s'
+            exfmt = logging.Formatter(fmtstr)
             flh.setFormatter(exfmt)
         self._logger.addHandler(flh)
 
-    def _setup_stdout(self, stdout_max_level=logging.INFO):
+    def _setup_console(self, stdout_max_level=logging.INFO):
         """
         Attaches a STDOUT/STDERR handler. Messages at INFO/DEBUG level are handled through STDOUT and WARNING and higher
             are handled through STDERR in order to take advantage of typically built-in formatting (e.g., red text).
@@ -250,7 +305,8 @@ class I24Logger:
         """
         if stdout_max_level not in (logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL):
             raise ValueError("Must provide valid logging level for maximum log level to STDOUT.")
-        csfmt = logging.Formatter('%(levelname)s | %(name)s | %(message)s | %(extra)s')
+        fmtstr = '%(levelname)s | %(name)s | %(process)d | %(message)s | %(extra)s'
+        csfmt = logging.Formatter(fmtstr)
         if self._log_levels['console'] <= logging.INFO:
             outh = logging.StreamHandler(stream=sys.stdout)
             outh.setLevel(self._log_levels['console'])
@@ -333,3 +389,17 @@ class I24Logger:
             self.error(message=message, extra=extra, exc_info=exc_info)
         elif level_upper == 'CRITICAL':
             self.critical(message=message, extra=extra, exc_info=exc_info)
+
+
+def connect_automatically():
+    """
+    Function for automatically connecting a logger upon import of this module. In the future, this could check for
+    some system or environment variable or configuration, but fall back to the default console logger.
+    """
+    global logger
+    logger = I24Logger(log_name='defaultlog', connect_logstash=False, connect_syslog=False,
+                       connect_file=False, connect_console=True, console_log_level='DEBUG')
+
+
+# Always create a logger when this module is imported.
+connect_automatically()
