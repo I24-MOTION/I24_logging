@@ -9,6 +9,16 @@ With the desired python venv / conda env activated, use the following command in
 
 where `<tag>` is either a branch name (e.g. `master`) or a tag name (e.g. `v1.1`)
     
+Then, using in your python code anywhere is as simple as:
+
+```
+from i24_logger.log_writer import logger
+logger.debug("Hello World")
+```
+
+```
+Output: >>> DEBUG | defaultlog | 10382 | Hello World! | {'host': 'lambda-quad4x6000', 'env': 'DEF_ENV'}
+```
 
 ### Built to accommodate a few custom functional modes within the broader I-24 MOTION software stack
 
