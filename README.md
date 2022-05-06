@@ -5,7 +5,7 @@
 ### Installation
 With the desired python venv / conda env activated, use the following command in shell:
 
-`pip install git+https:https://github.com/Lab-Work/I24_logging/@<tag>`
+`pip install git+https://github.com/Lab-Work/I24_logging/@<tag>`
 
 where `<tag>` is either a branch name (e.g. `master`) or a tag name (e.g. `v1.1`)
     
