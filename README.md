@@ -2,6 +2,14 @@
 #### Version: 1.1
 #### Date revised: 05/05/2022
 
+### Installation
+With the desired python venv / conda env activated, use the following command in shell:
+
+`pip install git+https:https://github.com/Lab-Work/I24_logging/@<tag>`
+
+where `<tag>` is either a branch name (e.g. `master`) or a tag name (e.g. `v1.1`)
+    
+
 ### Built to accommodate a few custom functional modes within the broader I-24 MOTION software stack
 
 - Asynchronous log messaging to Logstash (Elastic stack) 
