@@ -19,7 +19,7 @@ class MaxLevelFilter(object):
     """
     Filter for keeping log records of a given level or LOWER (as opposed to the normal 'or higher' functionality).
     Does not inherit from logging.Filter, since we need our own __init__ to keep track of the max level.
-    Inspired from: https://pythonexamples.org/python-logging-info/#3
+    Inspired from: https://pythonexamples.org/python-logging-info
     """
     def __init__(self, level):
         """
@@ -66,7 +66,8 @@ class ExtraLogger(logging.Logger):
         :return: LogRecord with the desired 'extra' attribute and unpacked "extra" values
         """
         # Make the call to the normal `makeRecord` function, which will do the default behavior
-        rv = super(ExtraLogger, self).makeRecord(name=name, level=level, fn=fn, lno=lno, msg=msg, args=args,
+        # DEREK: brutish fix, use logging.Logger.makeRecord as a static method
+        rv = logging.Logger.makeRecord(None,name=name, level=level, fn=fn, lno=lno, msg=msg, args=args,
                                                  exc_info=exc_info, func=func, extra=extra, sinfo=sinfo)
         # Also add the complete "extra" dictionary as an attribute
         rv.__dict__['extra'] = extra
@@ -390,16 +391,42 @@ class I24Logger:
         elif level_upper == 'CRITICAL':
             self.critical(message=message, extra=extra, exc_info=exc_info)
 
+    def set_name(self,name):
+        self._name = name
+        
+    def __del__(self):
+        for h in reversed(self._logger.handlers):
+            h.close()
+            logging._removeHandlerRef(h)
+            del h 
+        self._logger.handlers.clear()
+        self._logger.handlers = []
+        del self._logger
 
-def connect_automatically():
+def connect_automatically(user_settings = {}):
     """
     Function for automatically connecting a logger upon import of this module. In the future, this could check for
     some system or environment variable or configuration, but fall back to the default console logger.
-    """
+    :param user_settings (dict) overrides for default settings listed in `params`
+    """   
+    
+    params = {"log_name":"defaultlog",
+              "processing_environment":None,
+              "connect_logstash":False,
+              "logstash_address":('10.2.218.61',5000),
+              "connect_syslog":False,
+              "connect_file":False,
+              "connect_console":True, 
+              "console_log_level":'DEBUG'
+              }
+    
+    # override defaults as specified
+    for key in params.keys():
+        if key in user_settings.keys():
+            params[key] = user_settings[key]
+        
     global logger
-    logger = I24Logger(log_name='defaultlog', connect_logstash=False, connect_syslog=False,
-                       connect_file=False, connect_console=True, console_log_level='DEBUG')
+    logger =  I24Logger(**params)
 
 
-# Always create a logger when this module is imported.
 connect_automatically()
