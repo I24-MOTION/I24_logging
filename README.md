@@ -105,7 +105,7 @@ DEBUG | defaultlog | 98852 | Second debug message. | {'host': 'Wills-MacBook-Pro
 
 ### Use case 2: Multiprocess logging
 
-The following conde and log output demonstrates the use of the I24Logger from multiple processes that are forked from a 
+The following code and log output demonstrates the use of the I24Logger from multiple processes that are forked from a 
 manager or existing process. Even if this code lives all within a single file, the logging package is imported/forked 
 into each child process with separate context. It exhibits the behavior of two separate instances with distinct PIDs.
 
