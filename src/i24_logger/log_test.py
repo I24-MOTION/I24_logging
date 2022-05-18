@@ -1,7 +1,6 @@
 import traceback
 
 import log_writer
-I24Logger = log_writer.I24Logger
 
 import multiprocessing as mp
 import os
@@ -9,18 +8,15 @@ import sys
 import time
 import random
 
-
-import statuslogger_test
 import datetime as dt
 
 def test_worker(name):
 
-    # minimalist logger creation; default names / IDs are provided by the logger
-    # eventually all logger parameters can be omitted in later versions
-    # worker_logger = I24Logger(connect_file=True, file_log_level='DEBUG',
-    #                           connect_console=True, console_log_level='INFO')
     print("(worker) My PID is {}.".format(os.getpid()))
+    
     worker_logger = log_writer.logger
+    worker_logger.set_name("worker")
+
     while True:
         try:
             wait_time = random.randint(0, 500) / 100
@@ -37,11 +33,10 @@ def test_worker(name):
 def test_main():
 
     # extended logger creation; names / IDs are provided by the caller
-    # parent_logger = I24Logger(server_id='test_server', environment='log-test',
-    #                           owner_process_name='test_main', owner_process_id=os.getpid(),
-    #                           connect_logstash=False, connect_file=True, connect_syslog=False, connect_console=True,
-    #                           file_path='{}.log'.format(os.getpid()), file_log_level='DEBUG', console_log_level='INFO')
+  
     parent_logger = log_writer.logger
+    parent_logger.set_name("parent")
+
     parent_logger.info("Main process logger connected.", extra={'myfield': 'EXTRA WORKS!'})
     num_workers = 4
     worker_processes = []
@@ -69,8 +64,7 @@ def test_main():
 if __name__ == '__main__':
     print("My PID is {}.".format(os.getpid()))
     test_main()
-    # l = I24Logger(server_id='import_logger', environment='log-test', owner_process_name='???',
-    #               owner_process_id=os.getpid(), connect_console=True)
+
     for fl in os.listdir('./'):
         if os.path.splitext(fl)[1] == '.log' and os.path.splitext(fl)[0] != str(os.getpid()):
             try:
@@ -84,7 +78,7 @@ if __name__ == '__main__':
     logger.info("INFORMATION")
     time.sleep(0.5)
 
-    statuslogger_test.to_ole(dt.datetime.now())
-    time.sleep(0.5)
+    # statuslogger_test.to_ole(dt.datetime.now())
+    # time.sleep(0.5)
     logger.warning("A WARNING!")
     logger.debug("Second debug message.")

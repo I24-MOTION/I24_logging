@@ -161,6 +161,7 @@ class I24Logger:
 
         logging.setLoggerClass(ExtraLogger)
         self._logger = logging.getLogger(self._name)
+
         self._logger.propagate = False
         # Set overall logger level at the minimum of the specified levels (no need to set it any lower).
         self._logger.setLevel(min(self._log_levels.values()))
@@ -392,7 +393,8 @@ class I24Logger:
             self.critical(message=message, extra=extra, exc_info=exc_info)
 
     def set_name(self,name):
-        self._name = name
+        self._logger.name = name
+
         
     def __del__(self):
         for h in reversed(self._logger.handlers):
