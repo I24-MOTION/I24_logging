@@ -1,6 +1,6 @@
 # Custom I-24 Logging package
-#### Version: 1.1
-#### Date revised: 05/05/2022
+#### Version: 1.1.1
+#### Date revised: 05/18/2022
 
 ### Installation
 With the desired python venv / conda env activated, use the following command in shell:
@@ -18,6 +18,13 @@ logger.debug("Hello World")
 
 ```
 Output: >>> DEBUG | defaultlog | 10382 | Hello World! | {'host': 'lambda-quad4x6000', 'env': 'DEF_ENV'}
+```
+
+#### New in this version
+User can customize logger name after initiating the logger object via
+```
+custom_logger = log_writer.logger
+custom_logger.set_name("custom_name")
 ```
 
 ### Built to accommodate a few custom functional modes within the broader I-24 MOTION software stack
