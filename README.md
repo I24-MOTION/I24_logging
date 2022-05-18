@@ -1,5 +1,5 @@
 # Custom I-24 Logging package
-#### Version: 1.1.1
+#### Version: 1.1
 #### Date revised: 05/18/2022
 
 ### Installation
@@ -20,7 +20,7 @@ logger.debug("Hello World")
 Output: >>> DEBUG | defaultlog | 10382 | Hello World! | {'host': 'lambda-quad4x6000', 'env': 'DEF_ENV'}
 ```
 
-#### New in this version
+#### New in master branch (untagged)
 User can customize logger name after initiating the logger object via
 ```
 custom_logger = log_writer.logger
