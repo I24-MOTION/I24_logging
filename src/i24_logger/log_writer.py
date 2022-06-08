@@ -6,6 +6,7 @@ from logstash_async.formatter import LogstashFormatter
 import ecs_logging
 import sys
 import os
+import traceback
 
 from typing import Union, Mapping
 
@@ -430,5 +431,26 @@ def connect_automatically(user_settings = {}):
     global logger
     logger =  I24Logger(**params)
 
+def trycatch(errors=(Exception, ), default_value=''):
+
+    def decorator(func):
+
+        def new_func(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except errors as e:
+                stacktrace = traceback.format_exc()
+                logger.critical(e,extra={"stacktrace":stacktrace})
+                print()
+                return default_value
+
+        return new_func
+
+    return decorator
 
 connect_automatically()
+
+
+@trycatch(errors = (Exception))
+def test_function():
+    raise Exception("HAHAHAHHAHA")
