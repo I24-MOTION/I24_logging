@@ -448,9 +448,10 @@ def catch_critical(errors=(Exception, ), default_value=''):
 
     return decorator
 
-connect_automatically(user_settings = {"connect_logstash":True})
+#connect_automatically(user_settings = {"connect_logstash":True})
+connect_automatically()
 
 
-@critical(errors = (Exception))
+@catch_critical(errors = (Exception))
 def test_function():
     raise Exception("Test Exception using catch_critical")
