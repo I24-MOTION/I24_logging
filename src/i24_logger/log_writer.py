@@ -431,7 +431,7 @@ def connect_automatically(user_settings = {}):
     global logger
     logger =  I24Logger(**params)
 
-def trycatch(errors=(Exception, ), default_value=''):
+def catch_critical(errors=(Exception, ), default_value=''):
 
     def decorator(func):
 
@@ -448,9 +448,9 @@ def trycatch(errors=(Exception, ), default_value=''):
 
     return decorator
 
-connect_automatically()
+connect_automatically(user_settings = {"connect_logstash":True})
 
 
-@trycatch(errors = (Exception))
+@critical(errors = (Exception))
 def test_function():
-    raise Exception("HAHAHAHHAHA")
+    raise Exception("Test Exception using catch_critical")
