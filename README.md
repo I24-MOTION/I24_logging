@@ -20,6 +20,34 @@ logger.debug("Hello World")
 Output: >>> DEBUG | defaultlog | 10382 | Hello World! | {'host': 'lambda-quad4x6000', 'env': 'DEF_ENV'}
 ```
 
+#### New in Version 1.1.2
+Now, you can set the default log parameters in a config file (if there is no config file, logger falls back to defaults).
+
+At the OS level, set: 
+
+    
+    export USER_CONFIG_DIRECTORY=<path to your config directory>
+    export USER_CONFIG_SECTION=<section name>
+    
+    
+And create a config file `logger.cofig` in `<config directory>`:
+    
+```
+   [DEFAULT] 
+   log_name=Tracking Session
+   processing_environment=None
+   connect_logstash=True
+   connect_syslog=False
+   connect_file=False
+   connect_console=True 
+   logstash_address=10.2.218.61,5000
+   console_log_level=DEBUG
+   
+   [<section name> if you want to specify another section]
+   ...
+   
+```
+
 #### New in master branch (untagged)
 User can customize logger name after initiating the logger object via
 ```
