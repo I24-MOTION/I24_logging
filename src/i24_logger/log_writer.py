@@ -7,6 +7,7 @@ import ecs_logging
 import sys
 import os
 import traceback
+import configparser
 
 from typing import Union, Mapping
 
@@ -423,13 +424,43 @@ def connect_automatically(user_settings = {}):
               "console_log_level":'DEBUG'
               }
     
+    
+    
+    
+    if len(user_settings.keys()) == 0:
+        try:
+            config_file = os.path.join(os.environ["USER_CONFIG_DIRECTORY"],"logger.config")
+            
+            try:
+                SECTION = os.environ["USER_CONFIG_SECTION"]
+            except:
+                SECTION = "DEFAULT"
+            
+            # load config here
+            config = configparser.ConfigParser()
+            config.read(config_file)
+            user_settings = dict(config["DEFAULT"])
+            
+            user_settings["processing_environment"] = SECTION
+            user_settings["connect_logstash"] = True if user_settings["connect_logstash"] == "True" else False
+            user_settings["connect_syslog"] = True if user_settings["connect_syslog"] == "True" else False
+            user_settings["connect_file"] = True if user_settings["connect_file"] == "True" else False
+            user_settings["connect_console"] = True if user_settings["connect_console"] == "True" else False
+            lsa = user_settings["logstash_address"]  
+            user_settings["logstash_address"]   = (lsa.split(",")[0], int(lsa.split(",")[1]))
+        except:
+            pass
+        
     # override defaults as specified
     for key in params.keys():
         if key in user_settings.keys():
             params[key] = user_settings[key]
-        
+    
+    
     global logger
     logger =  I24Logger(**params)
+        
+    return logger
 
 def catch_critical(errors=(Exception, ), default_value=''):
 
@@ -448,7 +479,6 @@ def catch_critical(errors=(Exception, ), default_value=''):
 
     return decorator
 
-#connect_automatically(user_settings = {"connect_logstash":True})
 connect_automatically()
 
 
