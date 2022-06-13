@@ -1,6 +1,6 @@
 # Custom I-24 Logging package
-#### Version: 1.1
-#### Date revised: 05/18/2022
+#### Version: 1.1.2
+#### Date revised: 06/13/2022
 
 ### Installation
 With the desired python venv / conda env activated, use the following command in shell:
