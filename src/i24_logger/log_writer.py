@@ -8,6 +8,7 @@ import sys
 import os
 import traceback
 import configparser
+import warnings
 
 from typing import Union, Mapping
 
@@ -462,7 +463,12 @@ def connect_automatically(user_settings = {}):
         
     return logger
 
-def catch_critical(errors=(Exception, ), default_value=''):
+
+#%% decorators
+
+
+
+def catch_critical(errors=(Exception, )):
 
     def decorator(func):
 
@@ -471,17 +477,66 @@ def catch_critical(errors=(Exception, ), default_value=''):
                 return func(*args, **kwargs)
             except errors as e:
                 stacktrace = traceback.format_exc()
-                logger.critical(e,extra={"stacktrace":stacktrace})
-                print()
-                return default_value
+                logger.critical("Knock knock. Who's there? {}".format(type(e).__name__),extra={"stacktrace":stacktrace})
+                
+                # raise the original error
+                raise e
 
         return new_func
 
     return decorator
 
+
+def log_errors(errors=(Exception,), default_value = None):
+    def decorator(func):
+
+        def new_func(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except errors as e:
+                stacktrace = traceback.format_exc()
+                logger.error(e,extra={"stacktrace":stacktrace})
+                return default_value
+        return new_func
+
+    return decorator
+
+def log_warnings():
+    def decorator(func):
+        
+        def new_func(*args, **kwargs):
+            with warnings.catch_warnings(record = True) as w:
+                
+                out = func(*args, **kwargs)
+
+                if len(w) > 0:
+                    for item in w:
+                        logger.warning("{} raised.".format(item.category),extra = {"warn_category":item.category,"warn_message":item.message,"stacktrace":traceback.format_exc()})
+                return out
+
+        return new_func
+
+    return decorator
+
+
 connect_automatically()
 
 
+
+
+
+#%% decorator tests
 @catch_critical(errors = (Exception))
 def test_function():
     raise Exception("Test Exception using catch_critical")
+    
+    
+@log_warnings()
+def test_function2():
+    warnings.warn("Test Warning using log_warnings")
+    print("Function continued execution after warning")
+    return -1
+
+@log_errors(errors = (ValueError))
+def test_function3():
+    raise ValueError("Test ValueError using log_errors")
