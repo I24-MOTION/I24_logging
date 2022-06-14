@@ -30,7 +30,7 @@ At the OS level, set:
     export USER_CONFIG_SECTION=<section name>
     
     
-And create a config file `logger.cofig` in `<config directory>`:
+And create a config file `logger.config` in `<config directory>`:
     
 ```
    [DEFAULT] 
