@@ -402,7 +402,9 @@ class I24Logger:
     def __del__(self):
         for h in reversed(self._logger.handlers):
             h.close()
-            logging._removeHandlerRef(h)
+            try:
+                logging._removeHandlerRef(h)
+            except: pass
             del h 
         self._logger.handlers.clear()
         self._logger.handlers = []
