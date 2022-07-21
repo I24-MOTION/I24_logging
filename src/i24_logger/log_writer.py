@@ -139,7 +139,10 @@ class StatusLoggerHandler(logging.handlers.SocketHandler):
         # Add app name, user name, and host name
         buf += self.mfc_string('AI-DSS') + self.mfc_string('Vanderbilt') + self.mfc_string('wbarbour')
         # Add event ID, event description
+        # TODO: Test the lookup of these parameters from the "extra" field of the log record...make sure record factory is working correct.
         buf += self.mfc_string('event ID') + self.mfc_string('event description')
+        # buf += self.mfc_string(record.extra.get('eventID', 'None'))
+        # buf += self.mfc_string(record.extra.get('eventDesc', 'None'))
         buf += self.mfc_string(record.msg)
         buf = bytearray(buf)
         return buf
