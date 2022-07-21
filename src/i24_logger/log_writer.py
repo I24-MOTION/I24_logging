@@ -6,14 +6,19 @@ from logstash_async.formatter import LogstashFormatter
 import ecs_logging
 import sys
 import os
+import struct
 import traceback
 import configparser
 import warnings
+import datetime as dt
 
 from typing import Union, Mapping
+Address = tuple[str, int]
 
 levels = {'CRITICAL': logging.CRITICAL, 'ERROR': logging.ERROR, 'WARNING': logging.WARNING,
           'INFO': logging.INFO, 'DEBUG': logging.DEBUG, None: None}
+# Conversion from Python logging numbers (equivalent to strings) to SwRI StatusLogger defined levels.
+sl_levelno_mapping = {0: 4, 10: 3, 20: 2, 30: 1, 40: 0, 50: 0}
 
 global logger
 
@@ -70,11 +75,74 @@ class ExtraLogger(logging.Logger):
         """
         # Make the call to the normal `makeRecord` function, which will do the default behavior
         # DEREK: brutish fix, use logging.Logger.makeRecord as a static method
-        rv = logging.Logger.makeRecord(None,name=name, level=level, fn=fn, lno=lno, msg=msg, args=args,
-                                                 exc_info=exc_info, func=func, extra=extra, sinfo=sinfo)
+        rv = logging.Logger.makeRecord(None, name=name, level=level, fn=fn, lno=lno, msg=msg, args=args,
+                                       exc_info=exc_info, func=func, extra=extra, sinfo=sinfo)
         # Also add the complete "extra" dictionary as an attribute
         rv.__dict__['extra'] = extra
         return rv
+
+
+class StatusLoggerHandler(logging.handlers.SocketHandler):
+    """
+    Send log messages as the defined StatusLogger format, defined below.
+
+    StatusLogger format: [ version (4 bytes UINT) -- OLE timestamp (8 bytes DOUBLE) -- log level (4 bytes UINT) --
+        log classification (4 bytes UINT) -- error code (4 bytes INT) -- app name (0-18 bytes MFC string) --
+        user name (0-6 bytes MFC string) -- event ID (variable bytes MFC string) -- event descr. (var. bytes MFC string)
+        -- message (var. bytes MFC string) ]
+    """
+
+    # def __init__(self, *args, **kwargs):
+    #    super(StatusLoggerHandler, self).__init__(*args, **kwargs)
+
+    @staticmethod
+    def mfc_string(string):
+        """
+        Format a string in MFC standard byte format.
+
+            For len < 255: single byte length value + string bytes
+            For len < 65534: 0xFF + 2-byte length value + string bytes
+            Else: 0xFF 0xFF 0xFF + 4-byte length value + string bytes
+        :param string: the string to format
+        :return: bytes of length indicators and string
+        """
+        if len(string) < 255:
+            return struct.pack('B', len(string)) + bytes(string, 'utf-8')
+        elif len(string) < 65534:
+            return b'\xff' + struct.pack('H', len(string)) + bytes(string, 'utf-8')
+        else:
+            return b'\xff\xff\xff' + struct.pack('I', len(string)) + bytes(string, 'utf-8')
+
+    @staticmethod
+    def ole_timestamp(timestamp):
+        """
+        Convert a datetime object into an OLE timestamp.
+
+        OLE timestamp has integer number of days since epoch, plus decimal portion of the seconds elapsed in the day.
+        :param timestamp: datetime.datetime object
+        :return: float for OLE timestamp
+        """
+        old_datum = dt.datetime(1899, 12, 30)
+        delta = timestamp - old_datum
+        return float(delta.days) + (float(delta.seconds) / 86400)
+
+    def makePickle(self, record: logging.LogRecord):
+        """
+        Make a bytes representation of the message to send to StatusLogger through a custom implementation.
+
+        :param record: a LogRecord object, assumed to be constructed using the ExtraLogger factory implemented here
+        :return: buffer of bytes
+        """
+        ts = self.ole_timestamp(dt.datetime.fromtimestamp(record.created))
+        # Start with the version, timestamp as OLE date, log level number, log classification, error code
+        buf = struct.pack('<IdIII', 1, ts, sl_levelno_mapping[record.levelno], 0, 0)
+        # Add app name, user name, and host name
+        buf += self.mfc_string('AI-DSS') + self.mfc_string('Vanderbilt') + self.mfc_string('wbarbour')
+        # Add event ID, event description
+        buf += self.mfc_string('event ID') + self.mfc_string('event description')
+        buf += self.mfc_string(record.msg)
+        buf = bytearray(buf)
+        return buf
 
 
 class I24Logger:
@@ -86,10 +154,11 @@ class I24Logger:
     # Python 3.8 compatibility mode...add other typehints if minimum version changes.
     def __init__(self, log_name: str = None, processing_environment: str = None,
                  connect_logstash: bool = False, connect_file: bool = False,
-                 connect_syslog: bool = False, connect_console: bool = False,
-                 logstash_address=None, file_path: str = None, syslog_location=None,
+                 connect_syslog: bool = False, connect_console: bool = False, connect_sl: bool = False,
+                 logstash_address: Address = None, sl_address: Address = None,
+                 file_path: str = None, syslog_location: str = None,
                  all_log_level: str = 'DEBUG', logstash_log_level=None, file_log_level=None,
-                 syslog_log_level=None, console_log_level=None):
+                 syslog_log_level=None, console_log_level=None, sl_log_level=None):
         """
         Constructor of the persistent logging interface. It establishes a custom multi-destination logger with the
             option to log different levels to different destinations.
@@ -100,13 +169,17 @@ class I24Logger:
             are instantiated, multiple files will be produced and need to be differentiated by `file_path`.
         :param connect_syslog: True/False to connect to the host computer's syslog via TCP Socket Stream.
         :param connect_console: True/False to connect to the STDOUT and STDERR available via `sys` package.
+        :param connect_sl: True/False to connect to SwRI StatusLogger.
         :param logstash_address: (host, port) tuple for Logstash connection.
+        :param sl_address: (host, port) tuple for StatusLogger connection.
         :param file_path: Path (absolute or relative) and file name of the log file to write; directories not created.
+        :param syslog_location: Path to syslog.
         :param all_log_level: Available to set a global log level across all handlers; overridden by handler-specific.
         :param logstash_log_level: Logstash log level as string; overrides `all_log_level`.
         :param file_log_level: File log level as string; overrides `all_log_level`.
         :param syslog_log_level: Syslog log level as string; overrides `all_log_level`.
         :param console_log_level: Console log level as string; overrides `all_log_level`.
+        :param sl_log_level: StatusLogger log level as string (Python convention); overrides `all_log_level`.
         """
         # There are multiple default LogRecord attributes that are populated automatically, so we don't need to
         #   duplicate this functionality unless it's not working for us.
@@ -124,6 +197,7 @@ class I24Logger:
         self._environment = processing_environment if processing_environment is not None else 'DEF_ENV'
         
         self._logstash_addr = logstash_address
+        self._statuslogger_addr = sl_address
         self._logfile_path = file_path if file_path is not None else '{}_{}.log'.format(self._name, os.getpid())
         self._syslog_location = syslog_location
 
@@ -132,7 +206,7 @@ class I24Logger:
         self._default_logger_extra = {'host': self._hostname, 'env': self._environment}
 
         if not all([ll in levels.keys() for ll in
-                    (logstash_log_level, file_log_level, syslog_log_level, console_log_level)]):
+                    (logstash_log_level, file_log_level, syslog_log_level, console_log_level, sl_log_level)]):
             raise ValueError("Invalid log level specified. Use: 'CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', None.")
         self._log_levels = {'logstash': (levels[logstash_log_level] if logstash_log_level is not None
                                          else levels[all_log_level]),
@@ -142,9 +216,11 @@ class I24Logger:
                                        else levels[all_log_level]),
                             'console': (levels[console_log_level] if console_log_level is not None
                                         else levels[all_log_level]),
+                            'statuslogger': (levels[sl_log_level] if sl_log_level is not None
+                                             else levels[all_log_level]),
                             }
-        self._connect = {'logstash': connect_logstash, 'file': connect_file,
-                         'syslog': connect_syslog, 'console': connect_console}
+        self._connect = {'logstash': connect_logstash, 'file': connect_file, 'syslog': connect_syslog,
+                         'console': connect_console, 'statuslogger': connect_sl}
 
         if self._connect['logstash'] is True and self._log_levels['logstash'] is None:
             raise ValueError("Logstash logging activated, but no log level specified during construction.")
@@ -154,13 +230,17 @@ class I24Logger:
             raise ValueError("Syslog logging activated, but no log level specified during construction.")
         if self._connect['console'] is True and self._log_levels['console'] is None:
             raise ValueError("Console logging activated, but no log level specified during construction.")
+        if self._connect['statuslogger'] is True and self._log_levels['statuslogger'] is None:
+            raise ValueError("StatusLogger logging activated, but no log level specified during construction.")
 
         if self._connect['logstash'] is True and self._logstash_addr is None:
-            raise ValueError("Logstash logging activated, but no connection information given (host and port).")
+            raise ValueError("Logstash logging activated, but no connection address given (host, port).")
         if self._connect['file'] is True and (self._logfile_path is None or self._logfile_path == ''):
             raise ValueError("File logging activated, but no file path given.")
-        if self._connect['syslog'] is True and syslog_location is None:
+        if self._connect['syslog'] is True and self._syslog_location is None:
             raise ValueError("Syslog logging activated, but no location (path or host/port tuple) given.")
+        if self._connect['statuslogger'] is True and self._statuslogger_addr is None:
+            raise ValueError("StatusLogger logging activated, but no connection address given (host, port).")
 
         logging.setLoggerClass(ExtraLogger)
         self._logger = logging.getLogger(self._name)
@@ -177,6 +257,8 @@ class I24Logger:
             self._setup_syslog()
         if self._connect['console'] is True:
             self._setup_console()
+        if self._connect['statuslogger'] is True:
+            self._setup_statuslogger()
 
     def connect_logstash(self, logstash_address, logstash_log_level=None):
         """
@@ -239,6 +321,23 @@ class I24Logger:
         if console_log_level is not None:
             self._log_levels['console'] = levels[console_log_level]
         self._setup_console()
+
+    def connect_statuslogger(self, sl_address: Address, sl_log_level=None):
+        """
+        External-access function for setting up StatusLogger AFTER construction of I24Logger.
+        :param sl_address: Since StatusLogger was not setup during construction, need (host, port) address.
+        :param  sl_log_level: StatusLogger log level as string (Python convention); overrides any level specified in
+            constructor for StatusLogger.
+        :return: None
+        """
+        if self._connect['statuslogger'] is True:
+            self.warning("StatusLogger logging is already connected!")
+            return
+        self._connect['statuslogger'] = True
+        self._statuslogger_addr = sl_address
+        if sl_log_level is not None:
+            self._log_levels['statuslogger'] = levels[sl_log_level]
+        self._setup_statuslogger()
 
     def _setup_logstash(self):
         """
@@ -323,6 +422,19 @@ class I24Logger:
         errh.setFormatter(csfmt)
         self._logger.addHandler(errh)
 
+    def _setup_statuslogger(self):
+        """
+        Create an instance of the custom StatusLoggerHandler class, which is a subclass of SocketHandler. Uses
+            connection information given in the I24Logger constructor. Log level is also set in the constructor.
+            Formatter is implicit in `makePickle` function, which packs log messages in bytes representation for
+            transmittal to StatusLogger.
+        :return: None
+        """
+        sl_host, sl_port = self._statuslogger_addr
+        slh = StatusLoggerHandler(host=sl_host, port=sl_port)
+        slh.setLevel(self._log_levels['statuslogger'])
+        self._logger.addHandler(slh)
+
     def debug(self, message: Union[str, BaseException], extra: Union[dict, None] = None, exc_info: bool = False):
         """
         Logs a message at the DEBUG level, which is the lowest order of precedence.
@@ -395,41 +507,40 @@ class I24Logger:
         elif level_upper == 'CRITICAL':
             self.critical(message=message, extra=extra, exc_info=exc_info)
 
-    def set_name(self,name):
+    def set_name(self, name):
         self._logger.name = name
 
-        
     def __del__(self):
         for h in reversed(self._logger.handlers):
             h.close()
             try:
                 logging._removeHandlerRef(h)
-            except: pass
+            except:
+                pass
             del h 
         self._logger.handlers.clear()
         self._logger.handlers = []
         del self._logger
 
-def connect_automatically(user_settings = {}):
+
+def connect_automatically(user_settings={}):
     """
     Function for automatically connecting a logger upon import of this module. In the future, this could check for
     some system or environment variable or configuration, but fall back to the default console logger.
     :param user_settings (dict) overrides for default settings listed in `params`
     """   
     
-    params = {"log_name":"defaultlog",
-              "processing_environment":None,
-              "connect_logstash":False,
-              "logstash_address":('10.2.218.61',5000),
-              "connect_syslog":False,
-              "connect_file":False,
-              "connect_console":True, 
-              "console_log_level":'DEBUG'
+    params = {"log_name": "defaultlog",
+              "processing_environment": None,
+              "connect_logstash": False,
+              "logstash_address": ('10.2.218.61', 5000),
+              "connect_syslog": False,
+              "connect_file": False,
+              "connect_console": True,
+              "connect_sl": False,
+              "console_log_level": 'DEBUG'
               }
-    
-    
-    
-    
+
     if len(user_settings.keys()) == 0:
         try:
             config_file = os.path.join(os.environ["USER_CONFIG_DIRECTORY"],"logger.config")
@@ -450,7 +561,7 @@ def connect_automatically(user_settings = {}):
             user_settings["connect_file"] = True if user_settings["connect_file"] == "True" else False
             user_settings["connect_console"] = True if user_settings["connect_console"] == "True" else False
             lsa = user_settings["logstash_address"]  
-            user_settings["logstash_address"]   = (lsa.split(",")[0], int(lsa.split(",")[1]))
+            user_settings["logstash_address"] = (lsa.split(",")[0], int(lsa.split(",")[1]))
         except:
             pass
         
@@ -458,18 +569,14 @@ def connect_automatically(user_settings = {}):
     for key in params.keys():
         if key in user_settings.keys():
             params[key] = user_settings[key]
-    
-    
+
     global logger
-    logger =  I24Logger(**params)
+    logger = I24Logger(**params)
         
     return logger
 
 
-#%% decorators
-
-
-
+# %% decorators
 def catch_critical(errors=(Exception, )):
 
     def decorator(func):
@@ -479,7 +586,8 @@ def catch_critical(errors=(Exception, )):
                 return func(*args, **kwargs)
             except errors as e:
                 stacktrace = traceback.format_exc()
-                logger.critical("Knock knock. Who's there? {}".format(type(e).__name__),extra={"stacktrace":stacktrace})
+                logger.critical("Knock knock. Who's there? {}".format(type(e).__name__),
+                                extra={"stacktrace": stacktrace})
                 
                 # raise the original error
                 raise e
@@ -489,7 +597,7 @@ def catch_critical(errors=(Exception, )):
     return decorator
 
 
-def log_errors(errors=(Exception,), default_value = None):
+def log_errors(errors=(Exception,), default_value=None):
     def decorator(func):
 
         def new_func(*args, **kwargs):
@@ -497,17 +605,18 @@ def log_errors(errors=(Exception,), default_value = None):
                 return func(*args, **kwargs)
             except errors as e:
                 stacktrace = traceback.format_exc()
-                logger.error(e,extra={"stacktrace":stacktrace})
+                logger.error(e, extra={"stacktrace": stacktrace})
                 return default_value
         return new_func
 
     return decorator
 
+
 def log_warnings():
     def decorator(func):
         
         def new_func(*args, **kwargs):
-            with warnings.catch_warnings(record = True) as w:
+            with warnings.catch_warnings(record=True) as w:
                 
                 out = func(*args, **kwargs)
 
@@ -524,11 +633,8 @@ def log_warnings():
 connect_automatically()
 
 
-
-
-
-#%% decorator tests
-@catch_critical(errors = (Exception))
+# %% decorator tests
+@catch_critical(errors=(Exception))
 def test_function():
     raise Exception("Test Exception using catch_critical")
     
@@ -539,6 +645,6 @@ def test_function2():
     print("Function continued execution after warning")
     return -1
 
-@log_errors(errors = (ValueError))
+@log_errors(errors=(ValueError))
 def test_function3():
     raise ValueError("Test ValueError using log_errors")
