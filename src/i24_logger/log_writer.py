@@ -412,7 +412,7 @@ class I24Logger:
         """
         if stdout_max_level not in (logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL):
             raise ValueError("Must provide valid logging level for maximum log level to STDOUT.")
-        fmtstr = '%(levelname)s | %(name)s | %(process)d | %(message)s '#|  %(extra)s'
+        fmtstr = '%(levelname)s | %(name)s | %(process)d | %(message)s '#|  %(extra)s'   ################################################# THis is where I suppressed printing extra to console
         csfmt = logging.Formatter(fmtstr)
         if self._log_levels['console'] <= logging.INFO:
             outh = logging.StreamHandler(stream=sys.stdout)
