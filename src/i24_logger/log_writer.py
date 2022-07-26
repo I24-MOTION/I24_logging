@@ -541,6 +541,7 @@ def connect_automatically(user_settings={}):
               "connect_file": False,
               "connect_console": True,
               "connect_sl": False,
+              "sl_address":None,
               "console_log_level": 'DEBUG'
               }
 
