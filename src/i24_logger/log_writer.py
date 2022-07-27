@@ -13,7 +13,9 @@ import warnings
 import datetime as dt
 
 from typing import Union, Mapping
-Address = tuple[str, int]
+
+# The below line has been commented out because it causes an error in Linux
+# Address = tuple[str, int]
 
 levels = {'CRITICAL': logging.CRITICAL, 'ERROR': logging.ERROR, 'WARNING': logging.WARNING,
           'INFO': logging.INFO, 'DEBUG': logging.DEBUG, None: None}
@@ -29,6 +31,7 @@ class MaxLevelFilter(object):
     Does not inherit from logging.Filter, since we need our own __init__ to keep track of the max level.
     Inspired from: https://pythonexamples.org/python-logging-info
     """
+
     def __init__(self, level):
         """
         Establish the filter with maximum log level to keep.
@@ -53,8 +56,9 @@ class ExtraLogger(logging.Logger):
         include different "extra" fields depending on context.
     Inspired from: https://devdreamz.com/question/710484-python-logging-logger-overriding-makerecord
     """
+
     def makeRecord(self, name: str, level: int, fn: str, lno: int, msg: object, args, exc_info,
-                   func: Union[str, None] = None,  extra: Union[Mapping[str, object], None] = None,
+                   func: Union[str, None] = None, extra: Union[Mapping[str, object], None] = None,
                    sinfo: Union[str, None] = None) -> logging.LogRecord:
         """
         Overrides `makeRecord` in logging.Logger in order to add a single feature: add the attribute 'extra' to each
@@ -158,7 +162,7 @@ class I24Logger:
     def __init__(self, log_name: str = None, processing_environment: str = None,
                  connect_logstash: bool = False, connect_file: bool = False,
                  connect_syslog: bool = False, connect_console: bool = False, connect_sl: bool = False,
-                 logstash_address: Address = None, sl_address: Address = None,
+                 logstash_address=None, sl_address=None,
                  file_path: str = None, syslog_location: str = None,
                  all_log_level: str = 'DEBUG', logstash_log_level=None, file_log_level=None,
                  syslog_log_level=None, console_log_level=None, sl_log_level=None):
@@ -198,7 +202,7 @@ class I24Logger:
 
         self._hostname = socket.gethostname()
         self._environment = processing_environment if processing_environment is not None else 'DEF_ENV'
-        
+
         self._logstash_addr = logstash_address
         self._statuslogger_addr = sl_address
         self._logfile_path = file_path if file_path is not None else '{}_{}.log'.format(self._name, os.getpid())
@@ -325,7 +329,7 @@ class I24Logger:
             self._log_levels['console'] = levels[console_log_level]
         self._setup_console()
 
-    def connect_statuslogger(self, sl_address: Address, sl_log_level=None):
+    def connect_statuslogger(self, sl_address, sl_log_level=None):
         """
         External-access function for setting up StatusLogger AFTER construction of I24Logger.
         :param sl_address: Since StatusLogger was not setup during construction, need (host, port) address.
@@ -412,7 +416,7 @@ class I24Logger:
         """
         if stdout_max_level not in (logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL):
             raise ValueError("Must provide valid logging level for maximum log level to STDOUT.")
-        fmtstr = '%(levelname)s | %(name)s | %(process)d | %(message)s '#|  %(extra)s'   ################################################# THis is where I suppressed printing extra to console
+        fmtstr = '%(levelname)s | %(name)s | %(process)d | %(message)s '  # |  %(extra)s'   ################################################# THis is where I suppressed printing extra to console
         csfmt = logging.Formatter(fmtstr)
         if self._log_levels['console'] <= logging.INFO:
             outh = logging.StreamHandler(stream=sys.stdout)
@@ -520,7 +524,7 @@ class I24Logger:
                 logging._removeHandlerRef(h)
             except:
                 pass
-            del h 
+            del h
         self._logger.handlers.clear()
         self._logger.handlers = []
         del self._logger
@@ -531,8 +535,8 @@ def connect_automatically(user_settings={}):
     Function for automatically connecting a logger upon import of this module. In the future, this could check for
     some system or environment variable or configuration, but fall back to the default console logger.
     :param user_settings (dict) overrides for default settings listed in `params`
-    """   
-    
+    """
+
     params = {"log_name": "defaultlog",
               "processing_environment": None,
               "connect_logstash": False,
@@ -541,34 +545,37 @@ def connect_automatically(user_settings={}):
               "connect_file": False,
               "connect_console": True,
               "connect_sl": False,
-              "sl_address":None,
+              "sl_address": None,
               "console_log_level": 'DEBUG'
               }
 
     if len(user_settings.keys()) == 0:
         try:
-            config_file = os.path.join(os.environ["USER_CONFIG_DIRECTORY"],"logger.config")
-            
+            config_file = os.path.join(os.environ["USER_CONFIG_DIRECTORY"], "logger.config")
+
             try:
                 SECTION = os.environ["USER_CONFIG_SECTION"]
             except:
                 SECTION = "DEFAULT"
-            
+
             # load config here
             config = configparser.ConfigParser()
             config.read(config_file)
             user_settings = dict(config["DEFAULT"])
-            
+
             user_settings["processing_environment"] = SECTION
             user_settings["connect_logstash"] = True if user_settings["connect_logstash"] == "True" else False
             user_settings["connect_syslog"] = True if user_settings["connect_syslog"] == "True" else False
             user_settings["connect_file"] = True if user_settings["connect_file"] == "True" else False
             user_settings["connect_console"] = True if user_settings["connect_console"] == "True" else False
-            lsa = user_settings["logstash_address"]  
+            user_settings["connect_sl"] = True if user_settings["connect_sl"] == "True" else False
+            lsa = user_settings["logstash_address"]
             user_settings["logstash_address"] = (lsa.split(",")[0], int(lsa.split(",")[1]))
+            sla = user_settings["sl_address"]
+            user_settings["sl_address"] = (sla.split(",")[0], int(sla.split(",")[1]))
         except:
             pass
-        
+
     # override defaults as specified
     for key in params.keys():
         if key in user_settings.keys():
@@ -576,13 +583,12 @@ def connect_automatically(user_settings={}):
 
     global logger
     logger = I24Logger(**params)
-        
+
     return logger
 
 
 # %% decorators
-def catch_critical(errors=(Exception, )):
-
+def catch_critical(errors=(Exception,)):
     def decorator(func):
 
         def new_func(*args, **kwargs):
@@ -592,7 +598,7 @@ def catch_critical(errors=(Exception, )):
                 stacktrace = traceback.format_exc()
                 logger.critical("Knock knock. Who's there? {}".format(type(e).__name__),
                                 extra={"stacktrace": stacktrace})
-                
+
                 # raise the original error
                 raise e
 
@@ -611,6 +617,7 @@ def log_errors(errors=(Exception,), default_value=None):
                 stacktrace = traceback.format_exc()
                 logger.error(e, extra={"stacktrace": stacktrace})
                 return default_value
+
         return new_func
 
     return decorator
@@ -618,15 +625,17 @@ def log_errors(errors=(Exception,), default_value=None):
 
 def log_warnings():
     def decorator(func):
-        
+
         def new_func(*args, **kwargs):
             with warnings.catch_warnings(record=True) as w:
-                
+
                 out = func(*args, **kwargs)
 
                 if len(w) > 0:
                     for item in w:
-                        logger.warning("{} raised.".format(item.category),extra = {"warn_category":item.category,"warn_message":item.message,"stacktrace":traceback.format_exc()})
+                        logger.warning("{} raised.".format(item.category),
+                                       extra={"warn_category": item.category, "warn_message": item.message,
+                                              "stacktrace": traceback.format_exc()})
                 return out
 
         return new_func
@@ -641,13 +650,14 @@ connect_automatically()
 @catch_critical(errors=(Exception))
 def test_function():
     raise Exception("Test Exception using catch_critical")
-    
-    
+
+
 @log_warnings()
 def test_function2():
     warnings.warn("Test Warning using log_warnings")
     print("Function continued execution after warning")
     return -1
+
 
 @log_errors(errors=(ValueError))
 def test_function3():
