@@ -416,7 +416,7 @@ class I24Logger:
         """
         if stdout_max_level not in (logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL):
             raise ValueError("Must provide valid logging level for maximum log level to STDOUT.")
-        fmtstr = '%(levelname)s | %(name)s | %(process)d | %(message)s '  # |  %(extra)s'   ################################################# THis is where I suppressed printing extra to console
+        fmtstr = '%(levelname)s | %(name)s | %(process)d | %(message)s '  # |  %(extra)s'
         csfmt = logging.Formatter(fmtstr)
         if self._log_levels['console'] <= logging.INFO:
             outh = logging.StreamHandler(stream=sys.stdout)
@@ -441,6 +441,23 @@ class I24Logger:
         slh = StatusLoggerHandler(host=sl_host, port=sl_port)
         slh.setLevel(self._log_levels['statuslogger'])
         self._logger.addHandler(slh)
+
+    def set_temporary_debug(self):
+        for handler in self._logger.handlers:
+            if isinstance(handler, AsynchronousLogstashHandler) or isinstance(handler, StatusLoggerHandler):
+                handler.setLevel(logging.DEBUG)
+                self.warning("Set {} handler to DEBUG level.".format(type(handler)))
+
+    def unset_temporary_debug(self):
+        for handler in self._logger.handlers:
+            if isinstance(handler, AsynchronousLogstashHandler):
+                handler.setLevel(self._log_levels['logstash'])
+                self.warning("Set {} handler back to {} level.".format(
+                    type(handler), logging.getLevelName(self._log_levels['logstash'])))
+            if isinstance(handler, StatusLoggerHandler):
+                handler.setLevel(self._log_levels['statuslogger'])
+                self.warning("Set {} handler back to {} level.".format(
+                    type(handler), logging.getLevelName(self._log_levels['statuslogger'])))
 
     def debug(self, message: Union[str, BaseException], extra: Union[dict, None] = None, exc_info: bool = False):
         """
@@ -561,20 +578,25 @@ def connect_automatically(user_settings={}):
             # load config here
             config = configparser.ConfigParser()
             config.read(config_file)
+            # TODO: this next line is seemingly conflicting with above thing about SECTION
             user_settings = dict(config["DEFAULT"])
 
             user_settings["processing_environment"] = SECTION
-            user_settings["connect_logstash"] = True if user_settings["connect_logstash"] == "True" else False
-            user_settings["connect_syslog"] = True if user_settings["connect_syslog"] == "True" else False
-            user_settings["connect_file"] = True if user_settings["connect_file"] == "True" else False
-            user_settings["connect_console"] = True if user_settings["connect_console"] == "True" else False
-            user_settings["connect_sl"] = True if user_settings["connect_sl"] == "True" else False
-            lsa = user_settings["logstash_address"]
-            user_settings["logstash_address"] = (lsa.split(",")[0], int(lsa.split(",")[1]))
-            sla = user_settings["sl_address"]
-            user_settings["sl_address"] = (sla.split(",")[0], int(sla.split(",")[1]))
-        except:
-            pass
+            user_settings["connect_logstash"] = True if user_settings.get("connect_logstash", None) == "True" else False
+            user_settings["connect_syslog"] = True if user_settings.get("connect_syslog", None) == "True" else False
+            user_settings["connect_file"] = True if user_settings.get("connect_file", None) == "True" else False
+            user_settings["connect_console"] = True if user_settings.get("connect_console", None) == "True" else False
+            user_settings["connect_sl"] = True if user_settings.get("connect_sl", None) == "True" else False
+
+            # look for remote addresses and parse them if they exist
+            lsa = user_settings.get("logstash_address", None)
+            if lsa is not None:
+                user_settings["logstash_address"] = (lsa.split(",")[0], int(lsa.split(",")[1]))
+            sla = user_settings.get("sl_address", None)
+            if sla is not None:
+                user_settings["sl_address"] = (sla.split(",")[0], int(sla.split(",")[1]))
+        except BaseException as e:
+            traceback.print_exc()
 
     # override defaults as specified
     for key in params.keys():
