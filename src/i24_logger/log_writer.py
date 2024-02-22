@@ -9,6 +9,7 @@ import os
 import struct
 import traceback
 import configparser
+import i24_configparse
 import warnings
 import datetime as dt
 
@@ -568,7 +569,8 @@ def connect_automatically(user_settings={}):
 
     if len(user_settings.keys()) == 0:
         try:
-            config_file = os.path.join(os.environ["USER_CONFIG_DIRECTORY"], "logger.config")
+            #config_file = os.path.join(os.environ["USER_CONFIG_DIRECTORY"], "logger.config")
+            config_file = i24_configparse.locate_file("logger.config")
 
             try:
                 SECTION = os.environ["USER_CONFIG_SECTION"]
